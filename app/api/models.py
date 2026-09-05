@@ -87,6 +87,7 @@ class AgentRequest(BaseModel):
     """Question submitted to the existing agent."""
 
     question: str = Field(min_length=1, max_length=4000)
+    conversation_history: list[dict[str, str]] = Field(default_factory=list, max_length=40)
 
 
 class AgentResponse(BaseModel):
@@ -105,3 +106,24 @@ class RootCauseResponse(BaseModel):
     analysis_type: str
     root_causes: list[dict[str, Any]]
     summary: str
+
+
+class AdvancedAnalysisResponse(BaseModel):
+    """Combined Phase 6 analysis response."""
+
+    model_config = ConfigDict(extra="allow")
+
+    success: bool
+    loom_id: str
+    current_telemetry: dict[str, Any]
+    historical_record_count: int
+    diagnostic: dict[str, Any]
+    maintenance_history: dict[str, Any]
+    anomaly_detection: dict[str, Any]
+    trend_analysis: dict[str, Any]
+    predictive_maintenance: dict[str, Any]
+    production_forecast: dict[str, Any]
+    failure_risk: dict[str, Any]
+    root_cause_analysis: dict[str, Any]
+    limitations: list[str]
+    explainability: str

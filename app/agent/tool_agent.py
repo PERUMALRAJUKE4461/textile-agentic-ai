@@ -217,7 +217,10 @@ def _error_response(message: str) -> str:
     return f"Agent unavailable: {message}"
 
 
-def run_agent(user_query: str) -> str:
+def run_agent(
+    user_query: str,
+    conversation_history: list[dict[str, str]] | None = None,
+) -> str:
     """Run the OpenRouter tool-calling loop with graceful failure handling."""
 
     if not isinstance(user_query, str) or not user_query.strip():
@@ -228,6 +231,13 @@ def run_agent(user_query: str) -> str:
         return _error_response("OPENROUTER_API_KEY is not configured.")
     if not current_settings.openrouter_model:
         return _error_response("OPENROUTER_MODEL is not configured.")
+
+    history_messages = []
+    for item in conversation_history or []:
+        if item.get("role") in {"user", "assistant"} and item.get("content"):
+            history_messages.append(
+                {"role": item["role"], "content": item["content"]}
+            )
 
     messages = [
         {
@@ -243,6 +253,15 @@ def run_agent(user_query: str) -> str:
                     "Use maintenance history to identify recurring problems. "
             
                     "Use web research when external technical knowledge is needed. "
+                    "Use the conversation history to resolve references such as it, "
+                    "this machine, the loom, the issue, and the technician. If a "
+                    "loom is already known from the conversation, do not ask for its "
+                    "ID again. Answer the user's specific question first and do not "
+                    "repeat a full investigation when a concise follow-up answer is "
+                    "appropriate. Prioritize technician actions when asked what to "
+                    "check. Use tools when current machine-specific evidence is "
+                    "needed, but use sufficient conversation evidence directly when "
+                    "it already answers the question. "
                     "For a fault investigation, gather machine status, maintenance "
                     "history, and diagnostics before using root_cause_analysis. "
                     "Use its targeted research and ranked evidence to prepare the "
@@ -275,6 +294,7 @@ def run_agent(user_query: str) -> str:
                 ),
             
         },
+        *history_messages,
         {
             "role": "user",
             "content": user_query,

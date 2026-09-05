@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import agent, diagnosis, machine, maintenance, research, root_cause
+from app.api.routes import advanced, agent, diagnosis, machine, maintenance, research, root_cause
 from app.config import load_settings
 
 
@@ -52,3 +52,4 @@ app.include_router(diagnosis.router)
 app.include_router(research.router)
 app.include_router(agent.router)
 app.include_router(root_cause.router)
+app.include_router(advanced.router)

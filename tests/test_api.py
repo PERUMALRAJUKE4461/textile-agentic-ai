@@ -86,10 +86,26 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.json()["result_count"], 1)
 
     def test_agent_endpoint_delegates_to_existing_agent(self):
-        with patch("app.api.routes.agent.run_agent", return_value="Machine is operating normally."):
-            response = self.client.post("/api/agent", json={"question": "Check L001"})
+        with patch("app.api.routes.agent.run_agent", return_value="Machine is operating normally.") as run_agent:
+            response = self.client.post(
+                "/api/agent",
+                json={
+                    "question": "What should I check first?",
+                    "conversation_history": [
+                        {"role": "user", "content": "Investigate L004"},
+                        {"role": "assistant", "content": "L004 is warning."},
+                    ],
+                },
+            )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["response"], "Machine is operating normally.")
+        run_agent.assert_called_once_with(
+            "What should I check first?",
+            [
+                {"role": "user", "content": "Investigate L004"},
+                {"role": "assistant", "content": "L004 is warning."},
+            ],
+        )
 
     def test_root_cause_endpoint_returns_structured_analysis(self):
         analysis = {

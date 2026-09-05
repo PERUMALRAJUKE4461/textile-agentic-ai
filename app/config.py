@@ -80,6 +80,7 @@ def load_settings(environ: dict[str, str] | None = None) -> Settings:
         origin.strip()
         for origin in values.get(
             "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
+            ",http://127.0.0.1:3000,http://127.0.0.1:5173"
         ).split(",")
         if origin.strip()
     )

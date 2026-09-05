@@ -13,4 +13,8 @@ router = APIRouter(prefix="/api", tags=["agent"])
 @router.post("/agent", response_model=AgentResponse)
 def agent(request: AgentRequest) -> AgentResponse:
     """Run the existing CLI agent and return its final response."""
-    return AgentResponse(response=agent_result(run_agent(request.question)))
+    return AgentResponse(
+        response=agent_result(
+            run_agent(request.question, request.conversation_history)
+        )
+    )
