@@ -1,0 +1,7 @@
+date,loom_id,loom_type,issue,action_taken,technician,downtime_hours
+2026-08-12,L001,Air-Jet,Low production,Air nozzle cleaned and pressure checked,Technician-01,2.5
+2026-08-20,L001,Air-Jet,Abnormal vibration,Bearing inspected and lubrication performed,Technician-02,3.0
+2026-08-28,L002,Rapier,High temperature,Cooling system cleaned,Technician-03,2.0
+2026-08-30,L003,Projectile,Yarn tension abnormal,Tension controller calibrated,Technician-01,1.5
+2026-09-01,L004,Water-Jet,Low efficiency,Drive system inspected,Technician-04,4.0
+2026-09-02,L001,Air-Jet,Low production,Weft insertion system inspected,Technician-02,2.0
