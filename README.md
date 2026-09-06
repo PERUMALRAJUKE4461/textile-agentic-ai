@@ -1,5 +1,93 @@
-# textile-agentic-ai
-Ai Agent for Textile Production Monitoring and Fault Recovery
+# Textile Agentic AI
+
+An agentic AI system for textile and loom manufacturing. The system investigates
+machine conditions by combining current loom telemetry, maintenance history,
+rule-based diagnostic analysis, and targeted external technical research. An
+OpenRouter-hosted LLM decides which tools are needed and produces the final
+evidence-based response.
+
+![System Architecture](docs/architecture.png)
+
+## Architecture and workflow
+
+The agent follows this workflow. Tool selection is decided by the agent based
+on the user's question and the evidence required:
+
+```text
+User Query
+	|
+	v
+OpenRouter LLM / Agent
+	|
+	v
+Tool Selection
+	|-- Machine Status
+	|-- Maintenance History
+	|-- Diagnostic Analysis
+	`-- Tavily Web Research
+	|
+	v
+Evidence-based Analysis
+	|
+	v
+Final Diagnosis / Recommendations
+```
+
+The machine-specific tools use the local CSV data files. Web research supplies
+general external technical references; it must not be treated as a machine
+measurement or maintenance record.
+
+## API services
+
+These services have separate responsibilities:
+
+### OpenRouter API
+
+- Provides the LLM used for agent reasoning.
+- Handles the agent's tool-calling loop and generates the final response.
+- Requires `OPENROUTER_API_KEY`.
+- The selected model is configured with `OPENROUTER_MODEL`.
+
+OpenRouter is the reasoning and orchestration service. It is not the source of
+the local machine data.
+
+### Tavily API
+
+- Is used independently by the web research tool.
+- Retrieves external technical information related to textile and loom
+  manufacturing problems.
+- Requires `TAVILY_API_KEY`.
+
+Tavily is a web search/research service only. It is not the LLM and does not
+provide the agent's reasoning. The agent uses Tavily results as general
+technical reference information alongside machine-specific evidence.
+
+## Tools
+
+| Module | Purpose |
+| --- | --- |
+| `tools/machine_tools.py` | Retrieves the latest loom telemetry and operating status from `data/loom_telemetry.csv`. |
+| `tools/maintenance_tools.py` | Retrieves maintenance records and recurring issues from `data/maintenance_history.csv`. |
+| `tools/diagnostic_tools.py` | Analyzes current machine telemetry against configured prototype thresholds and detects potential issues. |
+| `tools/research_tools.py` | Performs external web research through Tavily. |
+
+The agent also includes a root-cause analysis tool that correlates current
+telemetry, maintenance history, diagnostic findings, and targeted research.
+
+## Security and environment configuration
+
+API keys are stored locally in a `.env` file and are not committed to GitHub.
+Create your own `.env` file in the repository root using `.env.example` as the
+template. At minimum, provide your own values for:
+
+```dotenv
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=
+TAVILY_API_KEY=
+```
+
+Do not place real keys in `README.md`, `.env.example`, source files, or test
+fixtures. The included `.gitignore` excludes `.env` from version control.
 
 ## FastAPI backend
 
