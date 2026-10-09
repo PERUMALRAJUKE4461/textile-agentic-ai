@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -106,6 +108,49 @@ class ApiTests(unittest.TestCase):
                 {"role": "assistant", "content": "L004 is warning."},
             ],
         )
+
+    def test_agent_endpoint_persists_and_restores_session_memory(self):
+        session_id = "2a79ce38-08b3-4fd1-a4de-b2f0044508a7"
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "memory.sqlite3"
+            with patch("app.agent.memory._database_path", return_value=database):
+                with patch(
+                    "app.api.routes.agent.run_agent",
+                    side_effect=["L001 is warning.", "Inspect its air supply."],
+                ) as run_agent:
+                    first_response = self.client.post(
+                        "/api/agent",
+                        json={"question": "Investigate L001", "session_id": session_id},
+                    )
+                    restored = self.client.get(f"/api/agent/{session_id}/history")
+                    second_response = self.client.post(
+                        "/api/agent",
+                        json={"question": "What should I check?", "session_id": session_id},
+                    )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(restored.status_code, 200)
+        self.assertEqual(
+            restored.json()["messages"],
+            [
+                {"role": "user", "content": "Investigate L001"},
+                {"role": "assistant", "content": "L001 is warning."},
+            ],
+        )
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(
+            run_agent.call_args_list[1].args[1],
+            [
+                {"role": "user", "content": "Investigate L001"},
+                {"role": "assistant", "content": "L001 is warning."},
+            ],
+        )
+
+    def test_agent_rejects_malformed_session_id(self):
+        response = self.client.post(
+            "/api/agent", json={"question": "Investigate L001", "session_id": "invalid"}
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_root_cause_endpoint_returns_structured_analysis(self):
         analysis = {

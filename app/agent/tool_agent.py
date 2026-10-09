@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -14,13 +15,7 @@ from tools.root_cause_tools import root_cause_analysis
 
 
 LOGGER = logging.getLogger(__name__)
-settings = load_settings()
-
-client = OpenAI(
-    base_url=settings.openrouter_base_url,
-    api_key=settings.openrouter_api_key or "missing-api-key",
-    timeout=settings.request_timeout_seconds,
-)
+client: OpenAI | None = None
 
 
 TOOLS = [
@@ -217,6 +212,44 @@ def _error_response(message: str) -> str:
     return f"Agent unavailable: {message}"
 
 
+def _investigation_loom_id(
+    user_query: str, history_messages: list[dict[str, str]]
+) -> str | None:
+    """Find a loom ID for a machine-specific investigation or follow-up."""
+    investigation_terms = re.compile(
+        r"\b(check|investigat\w*|diagnos\w*|status|condition|fault|problem|"
+        r"issue|production|maintenance|machine|loom|why)\b",
+        re.IGNORECASE,
+    )
+    if not investigation_terms.search(user_query):
+        return None
+
+    current_match = re.search(r"\bL\d+\b", user_query, re.IGNORECASE)
+    if current_match:
+        return current_match.group(0).upper()
+
+    for item in reversed(history_messages):
+        history_match = re.search(r"\bL\d+\b", item["content"], re.IGNORECASE)
+        if history_match:
+            return history_match.group(0).upper()
+    return None
+
+
+def _collect_investigation_evidence(loom_id: str) -> dict[str, dict[str, object]]:
+    """Run four distinct machine tools before composing an investigation."""
+    tool_arguments = {"loom_id": loom_id}
+    evidence: dict[str, dict[str, object]] = {}
+    for tool_name in (
+        "get_machine_status",
+        "get_maintenance_history",
+        "diagnose_machine",
+        "root_cause_analysis",
+    ):
+        result = execute_tool(tool_name, tool_arguments)
+        evidence[tool_name] = result
+    return evidence
+
+
 def run_agent(
     user_query: str,
     conversation_history: list[dict[str, str]] | None = None,
@@ -232,12 +265,33 @@ def run_agent(
     if not current_settings.openrouter_model:
         return _error_response("OPENROUTER_MODEL is not configured.")
 
+    try:
+        active_client = client or OpenAI(
+            base_url=getattr(
+                current_settings, "openrouter_base_url", "https://openrouter.ai/api/v1"
+            ),
+            api_key=current_settings.openrouter_api_key,
+            timeout=getattr(current_settings, "request_timeout_seconds", 30.0),
+        )
+    except Exception as error:
+        LOGGER.error("Unable to configure OpenRouter client: %s", error)
+        return _error_response(
+            "the OpenRouter client could not be configured. Check the API URL and settings."
+        )
+
     history_messages = []
     for item in conversation_history or []:
         if item.get("role") in {"user", "assistant"} and item.get("content"):
             history_messages.append(
                 {"role": item["role"], "content": item["content"]}
             )
+
+    investigation_loom_id = _investigation_loom_id(user_query, history_messages)
+    investigation_evidence = (
+        _collect_investigation_evidence(investigation_loom_id)
+        if investigation_loom_id
+        else {}
+    )
 
     messages = [
         {
@@ -262,10 +316,15 @@ def run_agent(
                     "check. Use tools when current machine-specific evidence is "
                     "needed, but use sufficient conversation evidence directly when "
                     "it already answers the question. "
-                    "For a fault investigation, gather machine status, maintenance "
-                    "history, and diagnostics before using root_cause_analysis. "
-                    "Use its targeted research and ranked evidence to prepare the "
-                    "final report. "
+                    "The latest conversation messages are persistent memory; use "
+                    "them to resolve follow-ups and never claim to remember details "
+                    "that are absent from them. For a loom investigation, use the "
+                    "provided machine status, maintenance history, diagnostics, and "
+                    "root-cause evidence before answering. These four tools have "
+                    "already been executed for the identified loom. Do not repeat "
+                    "those same lookups unless the user requests a fresh check. "
+                    "Use root-cause evidence and its targeted research to prepare "
+                    "the final report. "
                     "The root-cause confidence score is evidence-based, not a "
                     "scientifically validated probability. "
             
@@ -294,6 +353,19 @@ def run_agent(
                 ),
             
         },
+        *(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "Pre-collected machine investigation evidence (tool output):\n"
+                        + json.dumps(investigation_evidence, default=str)
+                    ),
+                }
+            ]
+            if investigation_evidence
+            else []
+        ),
         *history_messages,
         {
             "role": "user",
@@ -303,7 +375,7 @@ def run_agent(
 
     for _ in range(current_settings.max_agent_rounds):
         try:
-            response = client.chat.completions.create(
+            response = active_client.chat.completions.create(
                 model=current_settings.openrouter_model,
                 messages=messages,
                 tools=TOOLS,

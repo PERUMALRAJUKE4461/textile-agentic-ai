@@ -27,6 +27,7 @@ class Settings:
     tavily_api_key: str | None
     telemetry_file: str
     maintenance_file: str
+    chat_memory_file: str
     cors_origins: tuple[str, ...]
     research_max_results: int
     request_timeout_seconds: float
@@ -99,6 +100,9 @@ def load_settings(environ: dict[str, str] | None = None) -> Settings:
         ),
         maintenance_file=values.get(
             "MAINTENANCE_FILE", str(PROJECT_ROOT / "data" / "maintenance_history.csv")
+        ),
+        chat_memory_file=values.get(
+            "CHAT_MEMORY_FILE", str(PROJECT_ROOT / "data" / "agent_memory.sqlite3")
         ),
         cors_origins=cors_origins,
         research_max_results=_int_setting(values, "RESEARCH_MAX_RESULTS", 5),

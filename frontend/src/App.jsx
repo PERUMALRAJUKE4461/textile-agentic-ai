@@ -35,6 +35,16 @@ const initialMessage = {
   content: 'I can investigate a loom, trace recurring faults, or prioritize the next technician check.',
 }
 
+function getAssistantSessionId() {
+  const storageKey = 'textile-agent-session-id'
+  let sessionId = window.localStorage.getItem(storageKey)
+  if (!sessionId) {
+    sessionId = window.crypto.randomUUID()
+    window.localStorage.setItem(storageKey, sessionId)
+  }
+  return sessionId
+}
+
 async function apiRequest(path, options = {}) {
   const headers = options.body
     ? { 'Content-Type': 'application/json', ...options.headers }
@@ -81,6 +91,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('snapshot')
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [messages, setMessages] = useState([initialMessage])
+  const [sessionId] = useState(getAssistantSessionId)
+  const [chatHistoryLoaded, setChatHistoryLoaded] = useState(false)
   const [question, setQuestion] = useState('')
   const [assistantLoading, setAssistantLoading] = useState(false)
   const [currentTime, setCurrentTime] = useState(() => new Date())
@@ -110,6 +122,30 @@ function App() {
     const clock = window.setInterval(() => setCurrentTime(new Date()), 1000)
     return () => window.clearInterval(clock)
   }, [])
+
+  useEffect(() => {
+    let active = true
+    apiRequest(`/api/agent/${sessionId}/history`)
+      .then((result) => {
+        if (active && result.messages.length) setMessages(result.messages)
+      })
+      .catch((error) => {
+        console.error('Unable to restore assistant conversation:', error)
+        if (active) {
+          setMessages((current) => [
+            ...current,
+            {
+              role: 'error',
+              content: `Unable to restore saved conversation history.\n${error.message}`,
+            },
+          ])
+        }
+      })
+      .finally(() => {
+        if (active) setChatHistoryLoaded(true)
+      })
+    return () => { active = false }
+  }, [sessionId])
 
   const selectedMachine = machines.find((machine) => machine.loom_id === selectedId) || machines[0]
 
@@ -176,7 +212,7 @@ function App() {
   async function submitQuestion(event) {
     event.preventDefault()
     const trimmed = question.trim()
-    if (!trimmed || assistantLoading) return
+    if (!trimmed || assistantLoading || !chatHistoryLoaded) return
     setMessages((current) => [...current, { role: 'user', content: trimmed }])
     setQuestion('')
     setAssistantLoading(true)
@@ -185,9 +221,7 @@ function App() {
         method: 'POST',
         body: JSON.stringify({
           question: trimmed,
-          conversation_history: messages
-            .filter((message) => message.role === 'user' || message.role === 'assistant')
-            .map(({ role, content }) => ({ role, content })),
+          session_id: sessionId,
         }),
       })
       setMessages((current) => [...current, { role: 'assistant', content: result.response }])
@@ -282,7 +316,7 @@ function App() {
       </main>
 
       <button className="floating-assistant" onClick={() => setAssistantOpen(true)} title="Open AI assistant"><Bot size={21} /><span>AI assistant</span></button>
-      {assistantOpen && <AssistantPanel messages={messages} question={question} setQuestion={setQuestion} loading={assistantLoading} onSubmit={submitQuestion} onClose={() => setAssistantOpen(false)} />}
+      {assistantOpen && <AssistantPanel messages={messages} question={question} setQuestion={setQuestion} loading={assistantLoading} chatHistoryLoaded={chatHistoryLoaded} onSubmit={submitQuestion} onClose={() => setAssistantOpen(false)} />}
     </div>
   )
 }
@@ -439,7 +473,7 @@ function LegacyAssistantPanel({ messages, question, setQuestion, loading, onSubm
   return <div className="assistant-overlay" onClick={onClose}><aside className="assistant-panel" onClick={(event) => event.stopPropagation()}><div className="assistant-header"><div className="assistant-title"><div className="assistant-avatar"><Bot size={19} /></div><div><strong>Production assistant</strong><span>Powered by your agent workflow</span></div></div><button className="icon-button" onClick={onClose} title="Close assistant">×</button></div><div className="assistant-messages">{messages.map((message, index) => <div className={`chat-message ${message.role}`} key={`${message.role}-${index}`}><span>{message.content}</span></div>)}{loading && <div className="chat-message assistant"><Loader2 size={15} className="spin" /><span>Investigating machine evidence…</span></div>}</div><form className="assistant-form" onSubmit={onSubmit}><textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about a loom or production issue…" rows="2" /><button type="submit" disabled={loading || !question.trim()} title="Send question"><ArrowUpRight size={18} /></button><div className="assistant-hints"><button type="button" onClick={() => setQuestion('Why is L001 producing poorly?')}>Why is L001 producing poorly?</button><button type="button" onClick={() => setQuestion('What should the technician check first?')}>What should be checked first?</button></div></form></aside></div>
 }
 
-function AssistantPanel({ messages, question, setQuestion, loading, onSubmit, onClose }) {
+function AssistantPanel({ messages, question, setQuestion, loading, chatHistoryLoaded, onSubmit, onClose }) {
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
@@ -474,7 +508,7 @@ function AssistantPanel({ messages, question, setQuestion, loading, onSubmit, on
         </div>
         <form className="assistant-form" onSubmit={onSubmit}>
           <textarea value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={handleKeyDown} placeholder="Ask about a loom or production issue…" rows="2" />
-          <button type="submit" disabled={loading || !question.trim()} title="Send question"><ArrowUpRight size={18} /></button>
+          <button type="submit" disabled={loading || !question.trim() || !chatHistoryLoaded} title="Send question"><ArrowUpRight size={18} /></button>
           <div className="assistant-hints">
             <button type="button" onClick={() => setQuestion('Why is L001 producing poorly?')}>Why is L001 producing poorly?</button>
             <button type="button" onClick={() => setQuestion('What should be checked first?')}>What should be checked first?</button>

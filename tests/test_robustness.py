@@ -151,6 +151,100 @@ class RobustnessTests(unittest.TestCase):
                 result = tool_agent.run_agent("Check L001")
         self.assertIn("OpenRouter request failed", result)
 
+    def test_agent_builds_openrouter_client_from_current_settings(self):
+        response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(tool_calls=None, content="Live provider response.")
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kwargs: response)
+            )
+        )
+        settings = SimpleNamespace(
+            openrouter_api_key="live-key",
+            openrouter_model="provider/model",
+            openrouter_base_url="https://openrouter.ai/api/v1",
+            request_timeout_seconds=12,
+            max_agent_rounds=2,
+        )
+        with patch.object(tool_agent, "client", None):
+            with patch.object(tool_agent, "load_settings", return_value=settings):
+                with patch.object(tool_agent, "OpenAI", return_value=fake_client) as openai:
+                    result = tool_agent.run_agent("Check L001")
+
+        self.assertEqual(result, "Live provider response.")
+        openai.assert_called_once_with(
+            base_url="https://openrouter.ai/api/v1",
+            api_key="live-key",
+            timeout=12,
+        )
+
+    def test_agent_runs_four_tools_and_sends_persistent_memory_to_llm(self):
+        executed_tools = []
+        captured_requests = []
+
+        def execute_tool(name, arguments):
+            executed_tools.append((name, arguments["loom_id"]))
+            return {"success": True, "tool": name, "loom_id": arguments["loom_id"]}
+
+        def complete(**kwargs):
+            captured_requests.append(kwargs)
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            tool_calls=None,
+                            content="Inspect the loom air supply first.",
+                        )
+                    )
+                ]
+            )
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=complete))
+        )
+        settings = SimpleNamespace(
+            openrouter_api_key="live-key",
+            openrouter_model="provider/model",
+            max_agent_rounds=2,
+        )
+        history = [
+            {"role": "user", "content": "Investigate loom L004"},
+            {"role": "assistant", "content": "L004 had low production."},
+        ]
+        with patch.object(tool_agent, "client", fake_client):
+            with patch.object(tool_agent, "load_settings", return_value=settings):
+                with patch.object(tool_agent, "execute_tool", side_effect=execute_tool):
+                    response = tool_agent.run_agent(
+                        "What should the technician check first?", history
+                    )
+
+        self.assertEqual(response, "Inspect the loom air supply first.")
+        self.assertEqual(
+            executed_tools,
+            [
+                ("get_machine_status", "L004"),
+                ("get_maintenance_history", "L004"),
+                ("diagnose_machine", "L004"),
+                ("root_cause_analysis", "L004"),
+            ],
+        )
+        request_messages = captured_requests[0]["messages"]
+        self.assertIn(history[0], request_messages)
+        self.assertIn(history[1], request_messages)
+        evidence_message = next(
+            message
+            for message in request_messages
+            if message.get("content", "").startswith(
+                "Pre-collected machine investigation evidence"
+            )
+        )
+        self.assertIn('"root_cause_analysis"', evidence_message["content"])
+
     def test_malformed_json_tool_arguments_are_returned_to_agent(self):
         tool_call = SimpleNamespace(
             id="call-2",

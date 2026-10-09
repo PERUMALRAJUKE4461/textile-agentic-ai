@@ -87,6 +87,11 @@ class AgentRequest(BaseModel):
     """Question submitted to the existing agent."""
 
     question: str = Field(min_length=1, max_length=4000)
+    session_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+    )
     conversation_history: list[dict[str, str]] = Field(default_factory=list, max_length=40)
 
 
@@ -94,6 +99,13 @@ class AgentResponse(BaseModel):
     """Final natural-language agent response."""
 
     response: str
+
+
+class ConversationHistoryResponse(BaseModel):
+    """Persisted messages for one assistant conversation."""
+
+    session_id: str
+    messages: list[dict[str, str]]
 
 
 class RootCauseResponse(BaseModel):

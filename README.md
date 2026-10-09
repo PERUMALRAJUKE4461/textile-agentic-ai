@@ -105,6 +105,18 @@ OpenRouter agent. Local frontend origins are allowed by default through
 `CORS_ORIGINS` in `.env`; production deployments should set that variable to
 their explicit frontend origins rather than using `*`.
 
+The agent makes live OpenRouter chat-completion requests and dispatches model
+tool calls to the local machine/maintenance/diagnostic tools or the Tavily
+research tool. The frontend assigns each browser a UUID conversation ID and
+the backend persists successful user/assistant turns in
+`data/agent_memory.sqlite3` (override with `CHAT_MEMORY_FILE`). Returning to
+the dashboard restores that conversation, and recent turns are provided to
+the model for follow-up questions. This SQLite memory is local to the
+deployment and is not an account or cross-device sync feature.
+For a loom investigation, the agent runs four distinct machine tools before
+answering: current status, maintenance history, diagnostics, and root-cause
+analysis. The root-cause tool also attempts targeted Tavily research.
+
 ## Terminal chat
 
 With the virtual environment active and your `.env` configured, start an
