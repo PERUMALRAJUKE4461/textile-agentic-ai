@@ -105,6 +105,19 @@ OpenRouter agent. Local frontend origins are allowed by default through
 `CORS_ORIGINS` in `.env`; production deployments should set that variable to
 their explicit frontend origins rather than using `*`.
 
+## Terminal chat
+
+With the virtual environment active and your `.env` configured, start an
+interactive conversation directly in the terminal from the repository root:
+
+```powershell
+python -m app.agent.cli
+```
+
+Enter questions as prompted. The chat keeps conversation context between
+questions; type `/exit` or `/quit` to end it. This command calls the agent
+directly, so it does not require the FastAPI backend to be running.
+
 ## React frontend
 
 From the `frontend` directory:
